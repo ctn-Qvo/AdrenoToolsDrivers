@@ -19,16 +19,19 @@ jobs:
 
     - name: 准备环境
       run: |
+        sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.bak
+        sudo sed -i 's|http://archive.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
+        sudo sed -i 's|http://security.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
         sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-        sudo apt update
-        sudo apt install build-essential flex bison glslang-tools python3-pip
+        sudo apt -o Acquire::ForceIPv4=true update
+        sudo apt install -y build-essential flex bison glslang-tools python3-pip
         pip3 install --user meson
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: 执行构建脚本
       run: bash ./turnip_builder.sh
 
-    - name: 上传工件（替代 Release，无需令牌）
+    - name: 上传工件
       uses: actions/upload-artifact@v4
       with:
         name: mainline-turnup-v${{ inputs.version }}
