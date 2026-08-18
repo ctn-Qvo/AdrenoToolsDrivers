@@ -36,6 +36,20 @@ index 0b3f03f9513..98777b0a2fc 100644
     struct vk_sync_timeline_type timeline_type;
     const struct vk_sync_type *sync_types[3];
  
+diff --git a/src/freedreno/vulkan/tu_queue.h b/src/freedreno/vulkan/tu_queue.h
+index 278756a43af..a4d80f163e9 100644
+--- a/src/freedreno/vulkan/tu_queue.h
++++ b/src/freedreno/vulkan/tu_queue.h
+@@ -36,6 +36,9 @@ struct tu_queue
+    unsigned render_pass_idx;
+ 
+    int fence;           /* timestamp/fence of the last queue submission */
++
++   uint32_t kgsl_queue_timeline_id;
++   uint64_t kgsl_queue_timeline_seqno;
+ };
+ VK_DEFINE_HANDLE_CASTS(tu_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
+ 
 diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
 index 4c6d9eca27f..b3d7e5f8a1c 100644
 --- a/src/freedreno/vulkan/tu_knl_kgsl.cc
@@ -1273,20 +1287,6 @@ index 4c6d9eca27f..b3d7e5f8a1c 100644
     device->sync_types[2] = NULL;
  
     device->heap.size = tu_get_system_heap_size(device);
-diff --git a/src/freedreno/vulkan/tu_queue.h b/src/freedreno/vulkan/tu_queue.h
-index 278756a43af..a4d80f163e9 100644
---- a/src/freedreno/vulkan/tu_queue.h
-+++ b/src/freedreno/vulkan/tu_queue.h
-@@ -36,6 +36,9 @@ struct tu_queue
-    unsigned render_pass_idx;
- 
-    int fence;           /* timestamp/fence of the last queue submission */
-+
-+   uint32_t kgsl_queue_timeline_id;
-+   uint64_t kgsl_queue_timeline_seqno;
- };
- VK_DEFINE_HANDLE_CASTS(tu_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
- 
 diff --git a/src/vulkan/runtime/vk_semaphore.c b/src/vulkan/runtime/vk_semaphore.c
 index 534eaa76457..e1c385fef87 100644
 --- a/src/vulkan/runtime/vk_semaphore.c
