@@ -1,5 +1,5 @@
 diff --git a/src/freedreno/vulkan/tu_common.h b/src/freedreno/vulkan/tu_common.h
-index afb180794a36be6ae255c7ae3a330f29fa870d63..333b60e3cbc9f01f7b4cae5890e3c34325d56299 100644
+index afb180794a3..333b60e3cbc 100644
 --- a/src/freedreno/vulkan/tu_common.h
 +++ b/src/freedreno/vulkan/tu_common.h
 @@ -66,6 +66,7 @@
@@ -11,7 +11,7 @@ index afb180794a36be6ae255c7ae3a330f29fa870d63..333b60e3cbc9f01f7b4cae5890e3c343
  #include "wsi_common.h"
  
 diff --git a/src/freedreno/vulkan/tu_device.h b/src/freedreno/vulkan/tu_device.h
-index 0b3f03f9513864ff86f365f5bf2155bb08894d62..98777b0a2fc16a9f090be78997f3233ab283e9d3 100644
+index 0b3f03f9513..98777b0a2fc 100644
 --- a/src/freedreno/vulkan/tu_device.h
 +++ b/src/freedreno/vulkan/tu_device.h
 @@ -80,6 +80,11 @@ struct tu_queue_family {
@@ -37,7 +37,7 @@ index 0b3f03f9513864ff86f365f5bf2155bb08894d62..98777b0a2fc16a9f090be78997f3233a
     const struct vk_sync_type *sync_types[3];
  
 diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
-index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996ca00bf40 100644
+index 4c6d9eca27f..b3d7e5f8a1c 100644
 --- a/src/freedreno/vulkan/tu_knl_kgsl.cc
 +++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
 @@ -47,6 +47,92 @@ safe_ioctl(int fd, unsigned long request, void *arg)
@@ -91,8 +91,8 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
 +                         uint32_t flags)
 +{
 +   struct kgsl_timeline_wait req = {
-+      .tv_sec = timeout / NSEC_PER_SEC,
-+      .tv_nsec = timeout % NSEC_PER_SEC,
++      .tv_sec = timeout >= 0 ? timeout / NSEC_PER_SEC : -1,
++      .tv_nsec = timeout >= 0 ? timeout % NSEC_PER_SEC : 0,
 +      .timelines = (uint64_t)(uintptr_t) timeline_vals,
 +      .count = count,
 +      .timelines_size = sizeof(struct kgsl_timeline_val),
@@ -175,8 +175,8 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
 +static int64_t
 +get_relative_ns(uint64_t abs_timeout_ns)
 +{
-+   if (abs_timeout_ns >= INT64_MAX)
-+      return INT64_MAX;
++   if (abs_timeout_ns == UINT64_MAX)
++      return -1;   /* infinite wait marker */
 +
 +   int64_t cur_time_ns = os_time_get_nano();
 +   if (abs_timeout_ns <= cur_time_ns)
@@ -188,7 +188,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  /* safe_ioctl is not enough as restarted waits would not adjust the timeout
   * which could lead to waiting substantially longer than requested
   */
-@@ -1249,6 +1354,396 @@ const struct vk_sync_type vk_kgsl_sync_type = {
+@@ -1249,6 +1354,413 @@ const struct vk_sync_type vk_kgsl_sync_type = {
     .export_sync_file = vk_kgsl_sync_export_sync_file,
  };
  
@@ -379,8 +379,10 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
 +                       "kgsl_timeline_create failed: %m");
 +   }
 +
-+   binary->binary_timeline.next_point = (initial_value == 0);
++   /* binary semaphore starts unsignaled, so wait for the first signal point */
++   binary->binary_timeline.next_point = 1;
 +   binary->sync_file.fd = -1;
++
 +   return VK_SUCCESS;
 +}
 +
@@ -486,8 +488,14 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
 +{
 +   struct vk_kgsl_binary *binary = container_of(sync, struct vk_kgsl_binary, vk);
 +
++   int dup_fd = os_dupfd_cloexec(fd);
++   if (dup_fd < 0) {
++      return vk_errorf(_device, VK_ERROR_OUT_OF_HOST_MEMORY,
++                       "dup sync file fd failed: %m");
++   }
++
 +   binary->type = VK_KGSL_SYNC_TYPE_FENCE;
-+   binary->sync_file.fd = os_dupfd_cloexec(fd);
++   binary->sync_file.fd = dup_fd;
 +   return VK_SUCCESS;
 +}
 +
@@ -585,7 +593,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  struct tu_kgsl_queue_submit {
     struct util_dynarray commands;
     struct util_dynarray ranges;
-@@ -1366,19 +1861,111 @@ kgsl_bind_finalize(struct tu_kgsl_queue_submit *submit)
+@@ -1366,19 +1878,111 @@ kgsl_bind_finalize(struct tu_kgsl_queue_submit *submit)
     }
  }
  
@@ -705,7 +713,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
     if (submit->commands.size == 0 && submit->bind_cmds.size == 0) {
        /* This handles the case where we have a wait and no commands to submit.
         * It is necessary to handle this case separately as the kernel will not
-@@ -1445,38 +2032,13 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1445,38 +2049,13 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
     if (submit->bind_cmds.size != 0)
        kgsl_bind_finalize(submit);
  
@@ -749,7 +757,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
     }
  
     const struct kgsl_syncobj *wait_semaphores[wait_count];
-@@ -1524,7 +2086,6 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1524,7 +2103,6 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
  
     int ret;
     uint32_t timestamp = 0;
@@ -757,7 +765,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  
     if (submit->bind_cmds.size == 0) {
        struct kgsl_gpu_command req = {
-@@ -1539,11 +2100,11 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1539,11 +2117,11 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
           .context_id = queue->msm_queue_id,
        };
  
@@ -772,7 +780,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
        }
  
        ret = safe_ioctl(queue->device->physical_device->local_fd,
-@@ -1593,42 +2154,8 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1593,42 +2171,8 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
     }
  
  #if HAVE_PERFETTO
@@ -817,7 +825,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  #endif
  
     kgsl_syncobj_destroy(&wait_sync);
-@@ -1652,23 +2179,398 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1652,23 +2196,398 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
        signal_sync->timestamp = timestamp;
     }
  
@@ -1225,7 +1233,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  static VkResult
  kgsl_device_init(struct tu_device *dev)
  {
-@@ -1778,6 +2680,7 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1778,6 +2697,7 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     static const char dma_heap_path[] = "/dev/dma_heap/system";
     static const char ion_path[] = "/dev/ion";
     int dma_fd;
@@ -1233,7 +1241,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  
     dma_fd = open(dma_heap_path, O_RDONLY);
     if (dma_fd >= 0) {
-@@ -1843,11 +2746,27 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1843,11 +2763,27 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->has_raytracing = tu_kgsl_get_raytracing(fd);
  
     device->submitqueue_priority_count = 1;
@@ -1266,7 +1274,7 @@ index 4c6d9eca27f3025c464255a984224e72d2f5c98e..04efb2871b805c25a1703fb45668f996
  
     device->heap.size = tu_get_system_heap_size(device);
 diff --git a/src/freedreno/vulkan/tu_queue.h b/src/freedreno/vulkan/tu_queue.h
-index 278756a43af8914bbc02db2083a2c3f9f89479d3..a4d80f163e961e5155d57d5c609121acf914f069 100644
+index 278756a43af..a4d80f163e9 100644
 --- a/src/freedreno/vulkan/tu_queue.h
 +++ b/src/freedreno/vulkan/tu_queue.h
 @@ -36,6 +36,9 @@ struct tu_queue
@@ -1280,7 +1288,7 @@ index 278756a43af8914bbc02db2083a2c3f9f89479d3..a4d80f163e961e5155d57d5c609121ac
  VK_DEFINE_HANDLE_CASTS(tu_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
  
 diff --git a/src/vulkan/runtime/vk_semaphore.c b/src/vulkan/runtime/vk_semaphore.c
-index 534eaa76457ccc5c2d3900d76f7e7655fda679bb..e1c385fef87acd209df83127a153ad538c8111f5 100644
+index 534eaa76457..e1c385fef87 100644
 --- a/src/vulkan/runtime/vk_semaphore.c
 +++ b/src/vulkan/runtime/vk_semaphore.c
 @@ -47,7 +47,7 @@ vk_sync_semaphore_import_types(const struct vk_sync_type *type,
