@@ -1,5 +1,4 @@
 name: 构建 "turnip"
-
 on:
   workflow_dispatch:
     inputs:
@@ -7,7 +6,6 @@ on:
         description: '要构建的版本'
         required: true
         type: string
-
 jobs:
   start_building_turnip:
     runs-on: ubuntu-24.04
@@ -16,21 +14,23 @@ jobs:
     steps:
     - name: 检出代码仓库
       uses: actions/checkout@v3
-
     - name: 准备环境
       run: |
-        sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.bak
-        sudo sed -i 's|http://archive.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
-        sudo sed -i 's|http://security.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
-        sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+        sudo mv /etc/apt/apt-mirrors.txt /etc/apt/apt-mirrors.txt.bak 2>/dev/null || true
+        sudo mv /etc/apt/sources.list /etc/apt/sources.list.bak 2>/dev/null || true
+        sudo mv /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.disabled 2>/dev/null || true
+        sudo tee /etc/apt/sources.list << 'EOF'
+        deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble main restricted universe multiverse
+        deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble-updates main restricted universe multiverse
+        deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble-backports main restricted universe multiverse
+        deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble-security main restricted universe multiverse
+        EOF
         sudo apt -o Acquire::ForceIPv4=true update
         sudo apt install -y build-essential flex bison glslang-tools python3-pip
         pip3 install --user meson
         echo "$HOME/.local/bin" >> $GITHUB_PATH
-
     - name: 执行构建脚本
       run: bash ./turnip_builder.sh
-
     - name: 上传工件
       uses: actions/upload-artifact@v4
       with:
