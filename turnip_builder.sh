@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-#Define variables
+# 定义变量
 green='\033[0;32m'
 red='\033[0;31m'
 nocolor='\033[0m'
@@ -16,76 +16,76 @@ srcfolder="mesa"
 
 clear
 
-#There are 4 functions here, simply comment to disable.
-#You can insert your own function and make a pull request.
+# 这里共有 4 个函数，如需禁用直接注释掉即可。
+# 你也可以插入自己的函数并提交 PR。
 run_all(){
-	echo "====== Begin building TU V$BUILD_VERSION! ======"
-	echo "Current directory: $base_workdir"
+	echo "====== 开始构建 TU V$BUILD_VERSION！======"
+	echo "当前目录: $base_workdir"
 	check_deps
 	prepare_workdir
-	# This has path slash in the branch name and thus needs some workarounds
+	# 分支名含斜杠，需特殊处理
 	build_lib_for_android turnip/gen8 turnip
 	build_lib_for_android turnip/gen8 turnip-sync apply
 	#build_lib_for_android gen8-yuck
 }
 
 check_deps(){
-	echo "Checking system for required Dependencies ..."
+	echo "检查系统依赖 ..."
 		for deps_chk in $deps;
 			do
 				sleep 0.25
 				if command -v "$deps_chk" >/dev/null 2>&1 ; then
-					echo -e "$green - $deps_chk found $nocolor"
+					echo -e "$green - 找到 $deps_chk $nocolor"
 				else
-					echo -e "$red - $deps_chk not found, can't countinue. $nocolor"
+					echo -e "$red - 未找到 $deps_chk，无法继续。 $nocolor"
 					deps_missing=1
 				fi;
 			done
 
 		if [ "$deps_missing" == "1" ]
-			then echo "Please install missing dependencies" && exit 1
+			then echo "请安装缺失的依赖" && exit 1
 		fi
 
-	echo "Installing python Mako dependency (if missing) ..." $'\n'
+	echo "安装 Python Mako 依赖（如缺失）..." $'\n'
 		pip install mako &> /dev/null
 }
 
 prepare_workdir(){
-	echo "Preparing work directory ..." $'\n'
+	echo "准备工作目录 ..." $'\n'
 		mkdir -p "$workdir" && cd "$_"
 
-	echo "Downloading android-ndk from google server ..." $'\n'
+	echo "从 Google 下载 android-ndk ..." $'\n'
 		curl https://dl.google.com/android/repository/"$ndkver"-linux.zip --output "$ndkver"-linux.zip &> /dev/null
-	echo "Exracting android-ndk ..." $'\n'
+	echo "解压 android-ndk ..." $'\n'
 		unzip "$ndkver"-linux.zip &> /dev/null
 
-	echo "Downloading mesa source ..." $'\n'
+	echo "下载 mesa 源码 ..." $'\n'
 		git clone $mesasrc --depth=1 --no-single-branch $srcfolder
 		cd $srcfolder
 }
 
 apply_patch() {
-	echo "Applying patch $1"
+	echo "应用补丁 $1"
 	if ! git apply --check $1; then
-			echo "Failed to apply $1!"
+			echo "应用补丁 $1 失败！"
 			exit 1
 		fi
     	git apply $1
 }
 
-# $1 - real branch, $2 - escaped branch name
+# $1 - 实际分支名，$2 - 转义后的分支名
 build_lib_for_android(){
-	echo "==== Building Mesa on $1 branch ===="
+	echo "==== 在分支 $1 上构建 Mesa ===="
 	git checkout --force origin/$1
 	if [[ "$3" == "apply" ]]; then
-		echo "Applying patches"
+		echo "应用补丁"
 		for patch in $base_workdir/patches/*; do
 			apply_patch $patch
 		done
 	fi
-	echo "Pushing TU_VERSION..."
+	echo "设置 TU_VERSION..."
 	echo "#define TUGEN8_DRV_VERSION \"v$BUILD_VERSION\"" > ./src/freedreno/vulkan/tu_version.h
-	#Workaround for using Clang as c compiler instead of GCC
+	# 用 Clang 代替 GCC
 	mkdir -p "$workdir/bin"
 	ln -sf "$ndk/clang" "$workdir/bin/cc"
 	ln -sf "$ndk/clang++" "$workdir/bin/c++"
@@ -99,7 +99,7 @@ build_lib_for_android(){
 	export OBJCOPY=llvm-objcopy
 	export LDFLAGS="-fuse-ld=lld"
 
-	echo "Generating build files ..." $'\n'
+	echo "生成构建文件 ..." $'\n'
 		cat <<EOF >"android-aarch64.txt"
 [binaries]
 ar = '$ndk/llvm-ar'
@@ -150,19 +150,19 @@ EOF
 			-Dandroid-libbacktrace=disabled \
 			--reconfigure
 
-	echo "Compiling build files ..." $'\n'
+	echo "编译构建文件 ..." $'\n'
 		ninja -C build-android-aarch64 install
 
 	if ! [ -a /tmp/turnip-$2/lib/libvulkan_freedreno.so ]; then
-		echo -e "$red Build failed! $nocolor" && exit 1
+		echo -e "$red 构建失败！ $nocolor" && exit 1
 	fi
-	echo "Making the archive"
+	echo "打包"
 	cd /tmp/turnip-$2/lib
 	cat <<EOF >"meta.json"
 {
   "schemaVersion": 1,
-  "name": "Mainline Turnip v$BUILD_VERSION",
-  "description": "Upstream Turnip driver with some hacks. Built from $1 branch",
+  "name": "主线 Turnip v$BUILD_VERSION",
+  "description": "上游 Turnip 驱动 + 一些补丁。基于分支 $1 构建",
   "author": "whitebelyash",
   "packageVersion": "1",
   "vendor": "Mesa",
@@ -174,7 +174,7 @@ EOF
 zip /tmp/mainline-$2-V$BUILD_VERSION.zip libvulkan_freedreno.so meta.json
 cd -
 if ! [ -a /tmp/mainline-$2-V$BUILD_VERSION.zip ]; then
-	echo -e "$red Failed to pack the archive! $nocolor"
+	echo -e "$red 打包失败！ $nocolor"
 fi
 }
 
