@@ -75,8 +75,8 @@ apply_patch() {
 		echo -e "${red}完整错误信息：${nocolor}"
 		# 重新执行一次 git apply 并强制输出所有错误（避免被重定向吞掉）
 		git apply "$patch_file" 2>&1 || true
-		echo -e "${red}补丁文件最后 30 行：${nocolor}"
-		tail -n 30 "$patch_file"
+		echo -e "${red}补丁文件最后 150 行：${nocolor}"
+		tail -n 150 "$patch_file"
 		echo -e "${red}当前 Git 工作区状态：${nocolor}"
 		git status --short
 		exit 1
