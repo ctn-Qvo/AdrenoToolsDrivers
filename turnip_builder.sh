@@ -83,8 +83,6 @@ build_lib_for_android(){
 			apply_patch $patch
 		done
 	fi
-	echo "设置 TU_VERSION..."
-	echo "#define TUGEN8_DRV_VERSION \"v$BUILD_VERSION\"" > ./src/freedreno/vulkan/tu_version.h
 	# 用 Clang 代替 GCC
 	mkdir -p "$workdir/bin"
 	ln -sf "$ndk/clang" "$workdir/bin/cc"
