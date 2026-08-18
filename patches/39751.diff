@@ -2274,6 +2274,27 @@ index 48f2ea9821e..a27fda5a02d 100644
 -#endif
 +#endif
 \ No newline at end of file
+diff --git a/src/freedreno/vulkan/tu_wsi.cc b/src/freedreno/vulkan/tu_wsi.cc
+index 4db6d5e1346..dc4e819b5ea 100644
+--- a/src/freedreno/vulkan/tu_wsi.cc
++++ b/src/freedreno/vulkan/tu_wsi.cc
+@@ -49,6 +49,9 @@ tu_wsi_init(struct tu_physical_device *physical_device)
+    if (result != VK_SUCCESS)
+       return result;
+ 
++   /* Force immediate present mode to unlock framerate */
++   physical_device->wsi_device.override_present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
++
+    physical_device->wsi_device.supports_modifiers = true;
+    physical_device->wsi_device.can_present_on_device =
+       tu_wsi_can_present_on_device;
+@@ -64,4 +67,4 @@ tu_wsi_finish(struct tu_physical_device *physical_device)
+    physical_device->vk.wsi_device = NULL;
+    wsi_device_finish(&physical_device->wsi_device,
+                      &physical_device->instance->vk.alloc);
+-}
++}
+\ No newline at end of file
 diff --git a/src/vulkan/runtime/vk_semaphore.c b/src/vulkan/runtime/vk_semaphore.c
 index 534eaa76457..c4bb8b83093 100644
 --- a/src/vulkan/runtime/vk_semaphore.c
