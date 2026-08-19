@@ -98,7 +98,7 @@ index f7f67afa25f..699f62e5101 100644
 +#endif /* TU_DEVICE_H */
 \ No newline at end of file
 diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
-index 8b51fa27f68..af7f865929f 100644
+index 8b51fa27f68..6f21058f977 100644
 --- a/src/freedreno/vulkan/tu_knl_kgsl.cc
 +++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
 @@ -31,55 +31,132 @@
@@ -1835,9 +1835,8 @@ index 8b51fa27f68..af7f865929f 100644
  
     if (submit->bind_cmds.size == 0) {
        struct kgsl_gpu_command req = {
--         .flags = KGSL_CMDBATCH_SUBMIT_IB_LIST,
+          .flags = KGSL_CMDBATCH_SUBMIT_IB_LIST,
 -         .cmdlist = (uintptr_t) submit->commands.data,
-+         .flags = KGSL_CMDBATCH_SUBMIT_IB_LIST | KGSL_CMDBATCH_NO_TS_CMP,
 +         .cmdlist = (uintptr_t)submit->commands.data,
           .cmdsize = sizeof(struct kgsl_command_object),
           .numcmds = util_dynarray_num_elements(&submit->commands,
