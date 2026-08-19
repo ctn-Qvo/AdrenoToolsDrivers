@@ -98,7 +98,7 @@ index f7f67afa25f..699f62e5101 100644
 +#endif /* TU_DEVICE_H */
 \ No newline at end of file
 diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
-index 8b51fa27f68..38e1ee48dcf 100644
+index 8b51fa27f68..a5f25123be3 100644
 --- a/src/freedreno/vulkan/tu_knl_kgsl.cc
 +++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
 @@ -31,55 +31,132 @@
@@ -598,13 +598,9 @@ index 8b51fa27f68..38e1ee48dcf 100644
     s->timestamp = UINT32_MAX;
     s->fd = -1;
  }
-@@ -702,50 +725,74 @@ kgsl_syncobj_destroy(struct kgsl_syncobj *s)
-    kgsl_syncobj_reset(s);
+@@ -703,49 +726,69 @@ kgsl_syncobj_destroy(struct kgsl_syncobj *s)
  }
  
-+/* ============================== */
-+/* 修复后的 kgsl_syncobj_dup      */
-+/* ============================== */
  static struct kgsl_syncobj
 -kgsl_syncobj_dup(struct kgsl_syncobj *s)
 +kgsl_syncobj_dup(const struct kgsl_syncobj *s)
@@ -617,8 +613,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +   if (!s) {
 +      kgsl_syncobj_init(&ret, false);
 +      return ret;
-    }
--   return dups;
++   }
 +   ret = *s;
 +   switch (s->state) {
 +   case KGSL_SYNCOBJ_STATE_FD:
@@ -630,7 +625,6 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +      }
 +      break;
 +   case KGSL_SYNCOBJ_STATE_TS:
-+      /* TS 不拥有 fd，仅复制引用 */
 +      ret.fd = -1;
 +      break;
 +   case KGSL_SYNCOBJ_STATE_SIGNALED:
@@ -640,7 +634,8 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +   default:
 +      kgsl_syncobj_init(&ret, false);
 +      break;
-+   }
+    }
+-   return dups;
 +   return ret;
  }
  
@@ -690,7 +685,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  }
  
  static uint32_t
-@@ -764,27 +811,28 @@ static int
+@@ -764,27 +807,28 @@ static int
  get_relative_ms(uint64_t abs_timeout_ns)
  {
     if (abs_timeout_ns >= INT64_MAX)
@@ -730,7 +725,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
                      uint64_t abs_timeout_ns)
  {
     struct kgsl_device_waittimestamp_ctxtid wait = {
-@@ -798,11 +846,8 @@ wait_timestamp_safe(int fd,
+@@ -798,11 +842,8 @@ wait_timestamp_safe(int fd,
  
        if (ret == -1 && (errno == EINTR || errno == EAGAIN)) {
           int timeout_ms = get_relative_ms(abs_timeout_ns);
@@ -742,7 +737,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
           wait.timeout = timeout_ms;
        } else if (ret == -1) {
           assert(errno == ETIMEDOUT);
-@@ -817,8 +862,10 @@ static VkResult
+@@ -817,8 +858,10 @@ static VkResult
  kgsl_queue_wait_fence(struct tu_queue *queue, uint32_t fence,
                        uint64_t timeout_ns)
  {
@@ -754,7 +749,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     return wait_timestamp_safe(queue->device->fd, queue->msm_queue_id,
                                fence, abs_timeout_ns);
  }
-@@ -828,14 +875,12 @@ kgsl_syncobj_wait(struct tu_device *device,
+@@ -828,14 +871,12 @@ kgsl_syncobj_wait(struct tu_device *device,
                    struct kgsl_syncobj *s,
                    uint64_t abs_timeout_ns)
  {
@@ -773,7 +768,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  
        pthread_mutex_lock(&device->submit_mutex);
        struct timespec abstime;
-@@ -856,22 +901,17 @@ kgsl_syncobj_wait(struct tu_device *device,
+@@ -856,22 +897,17 @@ kgsl_syncobj_wait(struct tu_device *device,
              return VK_TIMEOUT;
           }
        }
@@ -798,7 +793,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     case KGSL_SYNCOBJ_STATE_FD: {
        int ret = sync_wait(s->fd, get_relative_ms(abs_timeout_ns));
        if (ret) {
-@@ -881,18 +921,14 @@ kgsl_syncobj_wait(struct tu_device *device,
+@@ -881,18 +917,14 @@ kgsl_syncobj_wait(struct tu_device *device,
           return VK_SUCCESS;
        }
     }
@@ -819,7 +814,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  {
     if (count == 0)
        return VK_TIMEOUT;
-@@ -901,33 +937,37 @@ kgsl_syncobj_wait_any(struct tu_device* device, struct kgsl_syncobj **syncobjs,
+@@ -901,33 +933,37 @@ kgsl_syncobj_wait_any(struct tu_device* device, struct kgsl_syncobj **syncobjs,
  
     uint32_t num_fds = 0;
     struct tu_queue *queue = NULL;
@@ -855,7 +850,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +            convert_ts_to_fd = true;
 +            break;
 +         }
-+         queue = syncobjs[i]->device->queues[0]; /* HACK: need proper queue lookup */
++         queue = syncobjs[i]->device->queues[0];
           convert_ts_to_fd = true;
           break;
        }
@@ -872,7 +867,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     struct u_vector poll_fds = { 0 };
     uint32_t lowest_timestamp = 0;
  
-@@ -935,42 +975,63 @@ kgsl_syncobj_wait_any(struct tu_device* device, struct kgsl_syncobj **syncobjs,
+@@ -935,42 +971,63 @@ kgsl_syncobj_wait_any(struct tu_device* device, struct kgsl_syncobj **syncobjs,
        u_vector_init(&poll_fds, 4, sizeof(struct pollfd));
  
     if (convert_ts_to_fd) {
@@ -955,7 +950,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
        struct pollfd *fds = (struct pollfd *) poll_fds.data;
        uint32_t fds_count = u_vector_length(&poll_fds);
        do {
-@@ -1014,21 +1075,17 @@ kgsl_syncobj_export(struct kgsl_syncobj *s, int *pFd)
+@@ -1014,21 +1071,17 @@ kgsl_syncobj_export(struct kgsl_syncobj *s, int *pFd)
     switch (s->state) {
     case KGSL_SYNCOBJ_STATE_SIGNALED:
     case KGSL_SYNCOBJ_STATE_UNSIGNALED:
@@ -977,7 +972,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     default:
        UNREACHABLE("Invalid syncobj state");
     }
-@@ -1044,7 +1101,6 @@ kgsl_syncobj_import(struct kgsl_syncobj *s, int fd)
+@@ -1044,7 +1097,6 @@ kgsl_syncobj_import(struct kgsl_syncobj *s, int fd)
     } else {
        s->state = KGSL_SYNCOBJ_STATE_SIGNALED;
     }
@@ -985,7 +980,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     return VK_SUCCESS;
  }
  
-@@ -1054,77 +1110,118 @@ sync_merge_close(const char *name, int fd1, int fd2, bool close_fd2)
+@@ -1054,77 +1106,115 @@ sync_merge_close(const char *name, int fd1, int fd2, bool close_fd2)
     int fd = sync_merge(name, fd1, fd2);
     if (fd < 0)
        return -1;
@@ -1000,9 +995,6 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -/* Merges multiple kgsl_syncobjs into a single one which is only signalled
 - * after all submitted syncobjs are signalled
 - */
-+/* ============================== */
-+/* 修复后的 kgsl_syncobj_merge    */
-+/* ============================== */
  static struct kgsl_syncobj
  kgsl_syncobj_merge(const struct kgsl_syncobj **syncobjs, uint32_t count)
  {
@@ -1016,13 +1008,13 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -   for (uint32_t i = 0; i < count; ++i) {
 -      const struct kgsl_syncobj *sync = syncobjs[i];
 +   bool first = true;
- 
--      switch (sync->state) {
++
 +   for (uint32_t i = 0; i < count; i++) {
 +      const struct kgsl_syncobj *s = syncobjs[i];
 +      if (!s)
 +         continue;
-+
+ 
+-      switch (sync->state) {
 +      switch (s->state) {
        case KGSL_SYNCOBJ_STATE_SIGNALED:
 -         break;
@@ -1143,7 +1135,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     return ret;
  }
  
-@@ -1206,14 +1303,12 @@ vk_kgsl_sync_wait_many(struct vk_device *_device,
+@@ -1206,14 +1296,12 @@ vk_kgsl_sync_wait_many(struct vk_device *_device,
           syncobjs[i] =
              &container_of(waits[i].sync, struct vk_kgsl_syncobj, vk)->syncobj;
        }
@@ -1158,7 +1150,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
           VkResult result =
              kgsl_syncobj_wait(device, &s->syncobj, abs_timeout_ns);
           if (result != VK_SUCCESS)
-@@ -1269,6 +1364,403 @@ const struct vk_sync_type vk_kgsl_sync_type = {
+@@ -1269,6 +1357,403 @@ const struct vk_sync_type vk_kgsl_sync_type = {
     .export_sync_file = vk_kgsl_sync_export_sync_file,
  };
  
@@ -1562,7 +1554,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  struct tu_kgsl_queue_submit {
     struct util_dynarray commands;
     struct util_dynarray ranges;
-@@ -1280,8 +1772,16 @@ struct tu_kgsl_queue_submit {
+@@ -1280,8 +1765,16 @@ struct tu_kgsl_queue_submit {
  static void *
  kgsl_submit_create(struct tu_device *device)
  {
@@ -1581,7 +1573,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  }
  
  static void
-@@ -1306,7 +1806,7 @@ kgsl_submit_add_entries(struct tu_device *device, void *_submit,
+@@ -1306,7 +1799,7 @@ kgsl_submit_add_entries(struct tu_device *device, void *_submit,
  
     struct kgsl_command_object *cmds = (struct kgsl_command_object *)
        util_dynarray_grow(&submit->commands, struct kgsl_command_object,
@@ -1590,7 +1582,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  
     for (unsigned i = 0; i < num_entries; i++) {
        cmds[i] = (struct kgsl_command_object) {
-@@ -1346,7 +1846,6 @@ kgsl_submit_add_bind(struct tu_device *device,
+@@ -1346,7 +1839,6 @@ kgsl_submit_add_bind(struct tu_device *device,
           .target = vma->kgsl.virtual_bo->gem_handle,
        };
  
@@ -1598,7 +1590,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
        util_dynarray_append(&submit->bind_cmds, bind);
  
        submit->cur_vma = vma;
-@@ -1364,11 +1863,6 @@ kgsl_submit_add_bind(struct tu_device *device,
+@@ -1364,11 +1856,6 @@ kgsl_submit_add_bind(struct tu_device *device,
     util_dynarray_append(&submit->ranges, range);
  }
  
@@ -1610,7 +1602,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  static void
  kgsl_bind_finalize(struct tu_kgsl_queue_submit *submit)
  {
-@@ -1386,26 +1880,137 @@ kgsl_bind_finalize(struct tu_kgsl_queue_submit *submit)
+@@ -1386,26 +1873,126 @@ kgsl_bind_finalize(struct tu_kgsl_queue_submit *submit)
     }
  }
  
@@ -1716,9 +1708,6 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +}
  #endif
  
-+/* ============================== */
-+/* 修复后的 kgsl_queue_submit_syncobj */
-+/* ============================== */
 +static VkResult
 +kgsl_queue_submit_syncobj(struct tu_queue *queue, void *_submit,
 +                          struct vk_sync_wait *waits, uint32_t wait_count,
@@ -1744,14 +1733,6 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +      }
 +   }
 +
-+   /* ===== 修复：处理 wait_count == 0 ===== */
-+   struct kgsl_syncobj wait_sync;
-+   if (wait_count) {
-+      wait_sync = kgsl_syncobj_merge(wait_semaphores, wait_count);
-+   } else {
-+      kgsl_syncobj_init(&wait_sync, true);
-+   }
-+
     if (submit->commands.size == 0 && submit->bind_cmds.size == 0) {
 -      /* This handles the case where we have a wait and no commands to submit.
 -       * It is necessary to handle this case separately as the kernel will not
@@ -1762,12 +1743,12 @@ index 8b51fa27f68..38e1ee48dcf 100644
        const struct kgsl_syncobj *wait_semaphores[wait_count + 1];
        for (uint32_t i = 0; i < wait_count; i++) {
           wait_semaphores[i] = &container_of(waits[i].sync,
-@@ -1414,32 +2019,33 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1414,32 +2001,37 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
        }
  
        struct kgsl_syncobj last_submit_sync;
 -      if (queue->fence >= 0)
-+      if (queue->fence > 0)  /* 修复：使用 >0 而非 >=0 */
++      if (queue->fence > 0)
           last_submit_sync = (struct kgsl_syncobj) {
              .state = KGSL_SYNCOBJ_STATE_TS,
 -            .queue = queue,
@@ -1791,7 +1772,11 @@ index 8b51fa27f68..38e1ee48dcf 100644
           kgsl_syncobj_merge(wait_semaphores, wait_count + 1);
 -      assert(wait_sync.state !=
 -             KGSL_SYNCOBJ_STATE_UNSIGNALED); // Would wait forever
-+      assert(wait_sync.state != KGSL_SYNCOBJ_STATE_UNSIGNALED);
++      if (wait_sync.state == KGSL_SYNCOBJ_STATE_UNSIGNALED) {
++         kgsl_syncobj_destroy(&wait_sync);
++         kgsl_syncobj_destroy(&last_submit_sync);
++         return VK_TIMEOUT;
++      }
  
        if (signal_count == 1) {
 -         /* Move instead of duplicating the syncobj, as we don't need to
@@ -1804,7 +1789,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
           kgsl_syncobj_reset(signal_sync);
           *signal_sync = wait_sync;
        } else {
-@@ -1447,16 +2053,12 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1447,16 +2039,12 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
              struct kgsl_syncobj *signal_sync =
                 &container_of(signals[i].sync, struct vk_kgsl_syncobj, vk)
                     ->syncobj;
@@ -1821,7 +1806,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
        return VK_SUCCESS;
     }
  
-@@ -1465,38 +2067,12 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1465,52 +2053,35 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
     if (submit->bind_cmds.size != 0)
        kgsl_bind_finalize(submit);
  
@@ -1832,8 +1817,12 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -                           &queue->device->kgsl_profiling_suballoc,
 -                           sizeof(struct kgsl_cmdbatch_profiling_buffer), 4);
 -      mtx_unlock(&queue->device->kgsl_profiling_mutex);
--   }
--
++#if HAVE_PERFETTO
++      profiling.start_ts = tu_perfetto_begin_submit();
++#endif
++      kgsl_profiling_alloc(&profiling, queue, u_trace_submission_data);
+    }
+ 
 -   uint32_t obj_count = 0;
 -   if (u_trace_submission_data)
 -      obj_count++;
@@ -1858,24 +1847,41 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -      profiling_buffer =
 -         (struct kgsl_cmdbatch_profiling_buffer *) tu_suballoc_bo_map(bo);
 -      memset(profiling_buffer, 0, sizeof(*profiling_buffer));
-+#if HAVE_PERFETTO
-+      profiling.start_ts = tu_perfetto_begin_submit();
-+#endif
-+      kgsl_profiling_alloc(&profiling, queue, u_trace_submission_data);
++   struct kgsl_syncobj wait_sync;
++   if (wait_count > 0) {
++      const struct kgsl_syncobj **wait_semaphores =
++         (const struct kgsl_syncobj **) alloca(wait_count * sizeof(struct kgsl_syncobj *));
++      for (uint32_t i = 0; i < wait_count; i++) {
++         wait_semaphores[i] = &container_of(waits[i].sync,
++                                            struct vk_kgsl_syncobj, vk)
++                                  ->syncobj;
++      }
++      wait_sync = kgsl_syncobj_merge(wait_semaphores, wait_count);
++   } else {
++      kgsl_syncobj_init(&wait_sync, true);
     }
  
-    const struct kgsl_syncobj *wait_semaphores[wait_count];
-@@ -1508,8 +2084,7 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+-   const struct kgsl_syncobj *wait_semaphores[wait_count];
+-   for (uint32_t i = 0; i < wait_count; i++) {
+-      wait_semaphores[i] =
+-         &container_of(waits[i].sync, struct vk_kgsl_syncobj, vk)
+-             ->syncobj;
++   if (wait_sync.state == KGSL_SYNCOBJ_STATE_UNSIGNALED) {
++      kgsl_syncobj_destroy(&wait_sync);
++      if (u_trace_submission_data)
++         kgsl_profiling_free(&profiling, queue, u_trace_submission_data);
++      return VK_TIMEOUT;
+    }
  
-    struct kgsl_syncobj wait_sync =
-       kgsl_syncobj_merge(wait_semaphores, wait_count);
+-   struct kgsl_syncobj wait_sync =
+-      kgsl_syncobj_merge(wait_semaphores, wait_count);
 -   assert(wait_sync.state !=
 -          KGSL_SYNCOBJ_STATE_UNSIGNALED); // Would wait forever
-+   assert(wait_sync.state != KGSL_SYNCOBJ_STATE_UNSIGNALED);
- 
+-
     struct kgsl_cmd_syncpoint_timestamp ts;
     struct kgsl_cmd_syncpoint_fence fn;
-@@ -1518,138 +2093,99 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+    struct kgsl_command_syncpoint sync = { 0 };
+@@ -1518,138 +2089,104 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
     switch (wait_sync.state) {
     case KGSL_SYNCOBJ_STATE_SIGNALED:
        break;
@@ -1907,7 +1913,11 @@ index 8b51fa27f68..38e1ee48dcf 100644
        break;
 -
     default:
++      kgsl_syncobj_destroy(&wait_sync);
++      if (u_trace_submission_data)
++         kgsl_profiling_free(&profiling, queue, u_trace_submission_data);
        UNREACHABLE("invalid syncobj state");
++      return VK_ERROR_UNKNOWN;
     }
  
     int ret;
@@ -1967,6 +1977,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +            bind_count * sizeof(struct kgsl_gpu_aux_command_generic),
 +            8, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
 +      if (!aux_entries) {
++         kgsl_syncobj_destroy(&wait_sync);
 +         result = vk_device_set_lost(&queue->device->vk,
 +                                     "out of memory for aux commands");
 +         goto fail_submit;
@@ -2005,7 +2016,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -         i++;
        }
 -   }
--
+ 
 -#if HAVE_PERFETTO
 -   if (profiling_buffer) {
 -      /* We need to wait for KGSL to queue the GPU command before we can read
@@ -2024,7 +2035,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -         .reads = &perf,
 -         .count = 1,
 -      };
- 
+-
 -      ret = safe_ioctl(queue->device->fd, IOCTL_KGSL_PERFCOUNTER_READ, &req);
 -      /* Older KGSL has some kind of garbage in upper 32 bits */
 -      uint64_t offseted_gpu_ts = perf.value & 0xffffffff;
@@ -2063,12 +2074,11 @@ index 8b51fa27f68..38e1ee48dcf 100644
  
     kgsl_syncobj_destroy(&wait_sync);
  
-@@ -1659,36 +2195,68 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+@@ -1659,36 +2196,65 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
        goto fail_submit;
     }
  
 -   p_atomic_set(&queue->fence, timestamp);
-+   /* ===== 修复：只有 timestamp > 0 才更新 fence ===== */
 +   if (timestamp)
 +      p_atomic_set(&queue->fence, timestamp);
 +
@@ -2077,7 +2087,6 @@ index 8b51fa27f68..38e1ee48dcf 100644
 +      ret = kgsl_profiling_end_perfetto_submit(&profiling, queue);
 +#endif
  
-+   /* ===== 修复：signal 时检查 timestamp == 0 ===== */
     for (uint32_t i = 0; i < signal_count; i++) {
        struct kgsl_syncobj *signal_sync =
           &container_of(signals[i].sync, struct vk_kgsl_syncobj, vk)
@@ -2119,7 +2128,6 @@ index 8b51fa27f68..38e1ee48dcf 100644
 -      mtx_unlock(&queue->device->kgsl_profiling_mutex);
 +   result = VK_ERROR_DEVICE_LOST;
 +out:
-+   /* ===== 修复：只释放一次 profiling ===== */
 +   if (u_trace_submission_data) {
 +      kgsl_profiling_free(&profiling, queue, u_trace_submission_data);
     }
@@ -2149,7 +2157,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  static VkResult
  kgsl_device_init(struct tu_device *dev)
  {
-@@ -1699,7 +2267,6 @@ kgsl_device_init(struct tu_device *dev)
+@@ -1699,7 +2265,6 @@ kgsl_device_init(struct tu_device *dev)
  static void
  kgsl_device_finish(struct tu_device *dev)
  {
@@ -2157,7 +2165,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  }
  
  static int
-@@ -1712,7 +2279,6 @@ kgsl_device_get_gpu_timestamp(struct tu_device *dev, uint64_t *ts)
+@@ -1712,7 +2277,6 @@ kgsl_device_get_gpu_timestamp(struct tu_device *dev, uint64_t *ts)
  static int
  kgsl_device_get_suspend_count(struct tu_device *dev, uint64_t *suspend_count)
  {
@@ -2165,7 +2173,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     *suspend_count = 0;
     return 0;
  }
-@@ -1722,56 +2288,48 @@ kgsl_device_check_status(struct tu_device *device)
+@@ -1722,56 +2286,48 @@ kgsl_device_check_status(struct tu_device *device)
  {
     for (unsigned i = 0; i < TU_MAX_QUEUE_FAMILIES; i++) {
        for (unsigned q = 0; q < device->queue_count[i]; q++) {
@@ -2247,7 +2255,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  };
  
  static bool
-@@ -1781,7 +2339,6 @@ tu_kgsl_get_raytracing(int fd)
+@@ -1781,7 +2337,6 @@ tu_kgsl_get_raytracing(int fd)
     int ret = get_kgsl_prop(fd, KGSL_PROP_IS_RAYTRACING_ENABLED, &value, sizeof(value));
     if (ret)
        return false;
@@ -2255,7 +2263,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     return value;
  }
  
-@@ -1801,9 +2358,11 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1801,9 +2356,11 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
        return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
     }
  
@@ -2268,7 +2276,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
  
     dma_fd = open(dma_heap_path, O_RDONLY);
     if (dma_fd >= 0) {
-@@ -1811,7 +2370,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1811,7 +2368,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     } else {
        dma_fd = open(ion_path, O_RDONLY);
        if (dma_fd >= 0) {
@@ -2276,7 +2284,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
           struct ion_handle_data free = { .handle = 0 };
           if (safe_ioctl(dma_fd, ION_IOC_FREE, &free) >= 0 || errno != ENOTTY)
              device->kgsl_dma_type = TU_KGSL_DMA_TYPE_ION_LEGACY;
-@@ -1847,12 +2405,9 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1847,12 +2403,9 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
  
     if (get_kgsl_prop(fd, KGSL_PROP_UCHE_TRAP_BASE, &device->uche_trap_base,
                       sizeof(device->uche_trap_base))) {
@@ -2289,7 +2297,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     device->instance = instance;
     device->master_fd = -1;
     device->local_fd = fd;
-@@ -1867,13 +2422,24 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1867,13 +2420,24 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->gmem_base = gmem_iova;
  
     device->has_raytracing = tu_kgsl_get_raytracing(fd);
@@ -2319,7 +2327,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     device->sync_types[2] = NULL;
  
     device->heap.size = tu_get_system_heap_size(device);
-@@ -1883,7 +2449,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1883,7 +2447,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->has_set_iova = kgsl_is_memory_type_supported(
        fd, KGSL_MEMFLAGS_USE_CPU_MAP);
  
@@ -2327,7 +2335,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
     device->has_cached_coherent_memory = kgsl_is_memory_type_supported(
        fd, KGSL_MEMFLAGS_IOCOHERENT |
               (KGSL_CACHEMODE_WRITEBACK << KGSL_CACHEMODE_SHIFT));
-@@ -1893,36 +2458,25 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1893,36 +2456,25 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->has_lazy_bos = device->has_sparse;
     get_kgsl_prop(fd, KGSL_PROP_GPU_VA64_SIZE, &device->va_size,
                   sizeof(device->va_size));
@@ -2367,7 +2375,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
        break;
     case KGSL_UBWC_4_0:
     case KGSL_UBWC_5_0:
-@@ -1931,18 +2485,15 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1931,18 +2483,15 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
        device->ubwc_config.macrotile_mode = FDL_MACROTILE_8_CHANNEL;
        break;
     default:
@@ -2389,7 +2397,7 @@ index 8b51fa27f68..38e1ee48dcf 100644
        device->ubwc_config.bank_swizzle_levels = 0x4;
     }
  
-@@ -1962,4 +2513,4 @@ fail:
+@@ -1962,4 +2511,4 @@ fail:
     if (dma_fd >= 0)
        close(dma_fd);
     return result;
