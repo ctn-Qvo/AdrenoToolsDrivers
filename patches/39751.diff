@@ -112,7 +112,7 @@ index f7f67afa25f..699f62e5101 100644
 +#endif /* TU_DEVICE_H */
 \ No newline at end of file
 diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
-index 8b51fa27f68..df9e11da50a 100644
+index 8b51fa27f68..bc12dc44eec 100644
 --- a/src/freedreno/vulkan/tu_knl_kgsl.cc
 +++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
 @@ -31,55 +31,132 @@
@@ -1842,10 +1842,10 @@ index 8b51fa27f68..df9e11da50a 100644
 -      ret = safe_ioctl(queue->device->fd, IOCTL_KGSL_PERFCOUNTER_READ, &req);
 -      /* Older KGSL has some kind of garbage in upper 32 bits */
 -      uint64_t offseted_gpu_ts = perf.value & 0xffffffff;
--
+ 
 -      gpu_offset = tu_device_ticks_to_ns(
 -         queue->device, offseted_gpu_ts - profiling_buffer->gpu_ticks_queued);
- 
+-
 -      struct tu_perfetto_clocks clocks = {
 -         .cpu = profiling_buffer->wall_clock_ns,
 -         .gpu_ts = tu_device_ticks_to_ns(queue->device,
@@ -2402,7 +2402,7 @@ index 8b51fa27f68..df9e11da50a 100644
     device->instance = instance;
     device->master_fd = -1;
     device->local_fd = fd;
-@@ -1867,13 +2587,27 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1867,13 +2587,23 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->gmem_base = gmem_iova;
  
     device->has_raytracing = tu_kgsl_get_raytracing(fd);
@@ -2411,12 +2411,8 @@ index 8b51fa27f68..df9e11da50a 100644
 -   device->submitqueue_priority_count = 1;
 -   
 -   device->timeline_type = vk_sync_timeline_get_type(&vk_kgsl_sync_type);
-+   if (kgsl_timeline_create_ioctl(fd, 0, &dummy_timeline_id) == 0) {
-+      kgsl_timeline_destroy_ioctl(fd, dummy_timeline_id);
-+      device->kgsl_sync_impl_type = TU_KGSL_SYNC_IMPL_TYPE_TIMELINE;
-+   } else {
-+      device->kgsl_sync_impl_type = TU_KGSL_SYNC_IMPL_TYPE_SYNCOBJ;
-+   }
++   /* Force use of syncobj path to avoid timeline bugs and layer conflicts */
++   device->kgsl_sync_impl_type = TU_KGSL_SYNC_IMPL_TYPE_SYNCOBJ;
  
 -   device->sync_types[0] = &vk_kgsl_sync_type;
 -   device->sync_types[1] = &device->timeline_type.sync;
@@ -2435,7 +2431,7 @@ index 8b51fa27f68..df9e11da50a 100644
     device->sync_types[2] = NULL;
  
     device->heap.size = tu_get_system_heap_size(device);
-@@ -1883,7 +2617,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1883,7 +2613,6 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->has_set_iova = kgsl_is_memory_type_supported(
        fd, KGSL_MEMFLAGS_USE_CPU_MAP);
  
@@ -2443,7 +2439,7 @@ index 8b51fa27f68..df9e11da50a 100644
     device->has_cached_coherent_memory = kgsl_is_memory_type_supported(
        fd, KGSL_MEMFLAGS_IOCOHERENT |
               (KGSL_CACHEMODE_WRITEBACK << KGSL_CACHEMODE_SHIFT));
-@@ -1893,36 +2626,25 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1893,36 +2622,25 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
     device->has_lazy_bos = device->has_sparse;
     get_kgsl_prop(fd, KGSL_PROP_GPU_VA64_SIZE, &device->va_size,
                   sizeof(device->va_size));
@@ -2483,7 +2479,7 @@ index 8b51fa27f68..df9e11da50a 100644
        break;
     case KGSL_UBWC_4_0:
     case KGSL_UBWC_5_0:
-@@ -1931,18 +2653,15 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+@@ -1931,18 +2649,15 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
        device->ubwc_config.macrotile_mode = FDL_MACROTILE_8_CHANNEL;
        break;
     default:
@@ -2505,7 +2501,7 @@ index 8b51fa27f68..df9e11da50a 100644
        device->ubwc_config.bank_swizzle_levels = 0x4;
     }
  
-@@ -1962,4 +2681,4 @@ fail:
+@@ -1962,4 +2677,4 @@ fail:
     if (dma_fd >= 0)
        close(dma_fd);
     return result;
