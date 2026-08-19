@@ -66,10 +66,18 @@ index f081e3ffc27..0cff2ea0232 100644
        }
        device->memory.type_count++;
 diff --git a/src/freedreno/vulkan/tu_device.h b/src/freedreno/vulkan/tu_device.h
-index f7f67afa25f..9e64057b089 100644
+index f7f67afa25f..621a80a60c2 100644
 --- a/src/freedreno/vulkan/tu_device.h
 +++ b/src/freedreno/vulkan/tu_device.h
-@@ -77,6 +77,11 @@ enum tu_kgsl_dma_type
+@@ -30,6 +30,7 @@
+ #include "tu_queue.h"
+ #include "tu_suballoc.h"
+ #include "tu_util.h"
++#include "msm_kgsl.h"
+ 
+ /* queue types */
+ #define TU_QUEUE_GENERAL 0
+@@ -77,6 +78,11 @@ enum tu_kgsl_dma_type
     TU_KGSL_DMA_TYPE_DMAHEAP,
  };
  
@@ -81,7 +89,7 @@ index f7f67afa25f..9e64057b089 100644
  struct tu_queue_family {
     enum tu_queue_type type;
     const VkQueueFamilyProperties *properties;
-@@ -187,6 +192,8 @@ struct tu_physical_device
+@@ -187,6 +193,8 @@ struct tu_physical_device
  
     struct vk_sync_type syncobj_type;
     struct vk_sync_timeline_type timeline_type;
@@ -90,7 +98,7 @@ index f7f67afa25f..9e64057b089 100644
     const struct vk_sync_type *sync_types[3];
  
     uint32_t device_count;
-@@ -680,13 +687,14 @@ struct tu_u_trace_submission_data
+@@ -680,13 +688,14 @@ struct tu_u_trace_submission_data
     struct u_trace **trace_per_cmd_buffer;
     struct tu_copy_timestamp_data *timestamp_copy_data;
  
@@ -109,7 +117,7 @@ index f7f67afa25f..9e64057b089 100644
  };
  
  VkResult
-@@ -730,4 +738,4 @@ tu_bo_init_new_cached(struct tu_device *dev, struct vk_object_base *base,
+@@ -730,4 +739,4 @@ tu_bo_init_new_cached(struct tu_device *dev, struct vk_object_base *base,
        flags, NULL, name);
  }
  
